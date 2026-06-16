@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- RabbitHome icon: a simple bunny on the warm accent background -->
+  <rect width="64" height="64" rx="14" fill="#ff7a59"/>
+  <ellipse cx="24" cy="19" rx="5" ry="14" fill="#ffffff"/>
+  <ellipse cx="40" cy="19" rx="5" ry="14" fill="#ffffff"/>
+  <ellipse cx="24" cy="20" rx="2.4" ry="9" fill="#ffd2c6"/>
+  <ellipse cx="40" cy="20" rx="2.4" ry="9" fill="#ffd2c6"/>
+  <circle cx="32" cy="41" r="15" fill="#ffffff"/>
+  <circle cx="27" cy="39" r="2" fill="#3a2a26"/>
+  <circle cx="37" cy="39" r="2" fill="#3a2a26"/>
+  <circle cx="32" cy="44" r="2.2" fill="#ff7a59"/>
+</svg>
