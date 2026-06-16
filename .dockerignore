@@ -1,0 +1,9 @@
+# Keep the build context small/clean. The frontend is rebuilt inside the image,
+# and the Go binary embeds the freshly built web/dist from the build stage.
+**/node_modules
+web/dist
+.git
+*.md
+rabbithome
+rabbithome-*
+data
