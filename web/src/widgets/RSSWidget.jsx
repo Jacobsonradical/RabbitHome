@@ -25,6 +25,7 @@ export default function RSSWidget({ widget, onChange }) {
   const st = widget.state || { read: [], ignored: [], seen: [] }
   const [showSettings, setShowSettings] = useState(s.feeds.length === 0)
   const [collapsed, setCollapsed] = useState(() => new Set()) // collapsed category names
+  const [tab, setTab] = useState('feed') // 'feed' | 'saved'
   const toggleCat = (name) =>
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -77,59 +78,116 @@ export default function RSSWidget({ widget, onChange }) {
   const ignore = (guid) =>
     patch({ state: { ...st, ignored: [...st.ignored, guid].slice(-1000) } })
 
+  // Saved items are kept in full (not just a guid) so they persist permanently,
+  // even after the original drops out of the feed/history. Saving removes the
+  // item from the feed, freeing its slot for the next unread item.
+  const saved = st.saved || []
+  const save = (item) => {
+    if (saved.some((x) => x.guid === item.guid)) return
+    patch({ state: { ...st, saved: [
+      { guid: item.guid, title: item.title, link: item.link, source: item.source, published: item.published },
+      ...saved,
+    ] } })
+  }
+  const unsave = (guid) =>
+    patch({ state: { ...st, saved: saved.filter((x) => x.guid !== guid) } })
+
   if (showSettings) {
     return <RSSSettings widget={widget} setSettings={setSettings} done={() => setShowSettings(false)} />
   }
   if (loading && !data) return <div className="center-note">Loading feeds…</div>
   if (s.feeds.length === 0) return <div className="center-note">No feeds yet. Click ⚙ to add one.</div>
 
-  // Apply ignore + length, then categorize by filter words.
+  // Apply ignore + saved + length, then categorize by filter words.
   const ignored = new Set(st.ignored)
   const read = new Set(st.read)
-  const visible = (data || []).filter((it) => !ignored.has(it.guid)).slice(0, s.length || 50)
+  const savedSet = new Set(saved.map((x) => x.guid))
+  const inFeed = (it) => !ignored.has(it.guid) && !savedSet.has(it.guid)
+  const visible = (data || []).filter(inFeed).slice(0, s.length || 50)
   const categories = categorize(visible, s.filters)
-  // Unread = everything in history not yet read/ignored (so a busy few days
-  // shows up as a count, not lost items).
-  const unreadCount = (data || []).filter((it) => !ignored.has(it.guid) && !read.has(it.guid)).length
+  // Unread = everything in history not yet read/ignored/saved (so a busy few
+  // days shows up as a count, not lost items).
+  const unreadCount = (data || []).filter((it) => inFeed(it) && !read.has(it.guid)).length
 
   return (
     <div>
-      <div className="rss-bar">
-        {unreadCount > 0 && <span className="unread-badge">{unreadCount} unread</span>}
-        <button className="head-btn" onClick={() => setShowSettings(true)} title="Feed settings">⚙</button>
+      <div className="rss-tabs">
+        <button className={'rss-tab' + (tab === 'feed' ? ' active' : '')} onClick={() => setTab('feed')}>
+          Feed{unreadCount > 0 && <span className="tab-badge">{unreadCount}</span>}
+        </button>
+        <button className={'rss-tab' + (tab === 'saved' ? ' active' : '')} onClick={() => setTab('saved')}>
+          Saved{saved.length > 0 && <span className="tab-badge">{saved.length}</span>}
+        </button>
+        <button className="head-btn" style={{ marginLeft: 'auto' }} onClick={() => setShowSettings(true)} title="Feed settings">⚙</button>
       </div>
-      {error && <div className="err-note">Some feeds failed: {error}</div>}
-      {categories.map(({ name, items }) => {
-        const hasHeader = categories.length > 1
-        const isCollapsed = hasHeader && collapsed.has(name)
-        return (
-        <div key={name}>
-          {hasHeader && (
-            <div className="feed-cat clickable" onClick={() => toggleCat(name)}>
-              <span className="cat-arrow">{isCollapsed ? '▶' : '▼'}</span>
-              {name}
-              <span className="cat-count">{items.length}</span>
-            </div>
-          )}
-          {!isCollapsed && (
-          <ul className="feed-list">
-            {items.map((it) => (
-              <li key={it.guid} className={'feed-item' + (read.has(it.guid) ? ' read' : '')}>
-                <div style={{ flex: 1 }}>
-                  <a href={it.link} target="_blank" rel="noreferrer" onClick={() => markRead(it.guid)}>
-                    {it.title}
-                  </a>
-                  <div className="meta">{it.source} · {timeAgo(it.published)}</div>
-                </div>
-                <button className="ignore" title="Ignore" onClick={() => ignore(it.guid)}>✕</button>
-              </li>
-            ))}
-          </ul>
-          )}
-        </div>
-        )
-      })}
+
+      {tab === 'saved' ? (
+        <SavedList
+          items={[...saved].sort((a, b) => (b.published || '').localeCompare(a.published || ''))}
+          onOpen={markRead}
+          onUnsave={unsave}
+        />
+      ) : (
+        <>
+          {error && <div className="err-note">Some feeds failed: {error}</div>}
+          {categories.map(({ name, items }) => {
+            const hasHeader = categories.length > 1
+            const isCollapsed = hasHeader && collapsed.has(name)
+            return (
+              <div key={name}>
+                {hasHeader && (
+                  <div className="feed-cat clickable" onClick={() => toggleCat(name)}>
+                    <span className="cat-arrow">{isCollapsed ? '▶' : '▼'}</span>
+                    {name}
+                    <span className="cat-count">{items.length}</span>
+                  </div>
+                )}
+                {!isCollapsed && (
+                  <ul className="feed-list">
+                    {items.map((it) => (
+                      <li key={it.guid} className={'feed-item' + (read.has(it.guid) ? ' read' : '')}>
+                        <div style={{ flex: 1 }}>
+                          <a href={it.link} target="_blank" rel="noreferrer" onClick={() => markRead(it.guid)}>
+                            {it.title}
+                          </a>
+                          <div className="meta">{it.source} · {timeAgo(it.published)}</div>
+                        </div>
+                        <div className="feed-actions">
+                          <button className="act" title="Save for later" onClick={() => save(it)}>🔖</button>
+                          <button className="act" title="Ignore" onClick={() => ignore(it.guid)}>✕</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
+        </>
+      )}
     </div>
+  )
+}
+
+// SavedList renders the permanently-saved items (no length limit, newest first).
+function SavedList({ items, onOpen, onUnsave }) {
+  if (items.length === 0) {
+    return <div className="center-note">No saved items yet. Click 🔖 on a feed item to keep it here.</div>
+  }
+  return (
+    <ul className="feed-list">
+      {items.map((it) => (
+        <li key={it.guid} className="feed-item">
+          <div style={{ flex: 1 }}>
+            <a href={it.link} target="_blank" rel="noreferrer" onClick={() => onOpen(it.guid)}>{it.title}</a>
+            <div className="meta">{it.source} · {timeAgo(it.published)}</div>
+          </div>
+          <div className="feed-actions">
+            <button className="act" title="Remove from saved" onClick={() => onUnsave(it.guid)}>✕</button>
+          </div>
+        </li>
+      ))}
+    </ul>
   )
 }
 

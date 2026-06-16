@@ -149,14 +149,25 @@ body {
 .feed-item.read a { color: var(--fg-dim); font-weight: 400; opacity: 0.55; }
 .feed-item .meta { font-size: calc(12px * var(--font-scale)); color: var(--fg-dim); margin-top: 3px; }
 .feed-item.read .meta { opacity: 0.6; }
-.feed-item .ignore { opacity: 0; background: none; border: none; color: var(--fg-dim); cursor: pointer; font-size: 14px; }
-.feed-item:hover .ignore { opacity: 1; }
-.feed-item .ignore:hover { color: var(--accent); }
+.feed-actions { display: flex; gap: 2px; align-items: center; }
+.feed-item .act { opacity: 0; background: none; border: none; color: var(--fg-dim); cursor: pointer; font-size: 13px; line-height: 1; padding: 3px 5px; border-radius: 6px; }
+.feed-item:hover .act { opacity: 0.85; }
+.feed-item .act:hover { opacity: 1; color: var(--accent); background: rgba(128,128,128,0.18); }
+
+/* New items slide/fade in as they fill freed slots (on remove/save). React only
+ * mounts the newly-entering row, so only it animates — existing rows just shift. */
+@keyframes feedIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.feed-item { animation: feedIn 0.3s ease; }
+@media (prefers-reduced-motion: reduce) { .feed-item { animation: none; } }
 .feed-rank { color: var(--accent); font-variant-numeric: tabular-nums; font-size: calc(13px * var(--font-scale)); min-width: 20px; font-weight: 600; }
 
-/* RSS top bar + unread badge */
-.rss-bar { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.unread-badge { margin-right: auto; background: var(--blue); color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 600; }
+/* RSS tabs (Feed / Saved) */
+.rss-tabs { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.rss-tab { display: inline-flex; align-items: center; gap: 6px; background: var(--fill); border: none; border-radius: 980px; padding: 5px 13px; font-size: 12.5px; font-weight: 600; color: var(--fg); cursor: pointer; transition: background 0.15s ease; }
+.rss-tab:hover { background: var(--fill-strong); }
+.rss-tab.active { background: var(--blue); color: #fff; }
+.rss-tab .tab-badge { background: var(--blue); color: #fff; border-radius: 999px; padding: 0 7px; font-size: 10px; font-weight: 700; }
+.rss-tab.active .tab-badge { background: rgba(255,255,255,0.3); }
 
 /* category headers inside RSS (collapsible) */
 .feed-cat { display: flex; align-items: center; gap: 7px; font-size: calc(14.5px * var(--font-scale)); font-weight: 700; letter-spacing: 0.2px; color: var(--accent-2); margin: 12px 0 4px; }
