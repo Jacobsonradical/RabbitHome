@@ -1,0 +1,17 @@
+# Run RabbitHome from the prebuilt image (published to GHCR by CI).
+#   docker compose up -d   ->   http://localhost:7171
+#
+# Your dashboard config and uploaded backgrounds persist in the named volume,
+# so they survive restarts and image updates.
+services:
+  rabbithome:
+    image: ghcr.io/jacobsonradical/rabbithome:latest
+    container_name: rabbithome
+    ports:
+      - "7171:7171"
+    volumes:
+      - rabbithome-data:/data
+    restart: unless-stopped
+
+volumes:
+  rabbithome-data:

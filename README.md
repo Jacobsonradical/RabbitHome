@@ -9,6 +9,24 @@ Everything is customized **in the UI** — no config files to edit. Add feeds an
 tickers with a button; drag widgets around; drop in background photos and the
 text auto-adjusts for contrast.
 
+## Quick start
+
+**Docker** (no clone, uses the prebuilt image) — then open <http://localhost:7171>:
+
+```bash
+mkdir rabbithome && cd rabbithome && curl -sL https://raw.githubusercontent.com/Jacobsonradical/RabbitHome/main/docker-compose.yml -o docker-compose.yml && docker compose up -d
+```
+
+**Standalone** (build from source; needs Go ≥ 1.25 and Node ≥ 20):
+
+```bash
+git clone https://github.com/Jacobsonradical/RabbitHome.git && cd RabbitHome && make build && ./rabbithome
+```
+
+Check Docker is running first with `docker info` (it errors if the daemon is
+stopped). Your config + backgrounds persist in the `rabbithome-data` volume, so
+they survive restarts and image updates (`docker compose pull && docker compose up -d`).
+
 ## Architecture
 
 A single Go binary serves a REST API and an embedded React app. One codebase,
