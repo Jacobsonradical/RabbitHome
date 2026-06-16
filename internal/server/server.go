@@ -16,21 +16,37 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rabbitlord/rabbithome/internal/config"
 	"github.com/rabbitlord/rabbithome/internal/feeds"
+	"github.com/rabbitlord/rabbithome/internal/history"
+)
+
+// How long RSS history is kept and how many items per feed are retained.
+const (
+	rssHistoryMax = 500
+	rssHistoryAge = 30 * 24 * time.Hour
+	pollInterval  = 10 * time.Minute
 )
 
 // Server holds dependencies shared by the handlers.
 type Server struct {
 	paths  config.Paths
-	static fs.FS // the built React app (embedded or on-disk)
+	static fs.FS          // the built React app (embedded or on-disk)
+	hist   *history.Store // persistent RSS item history
 }
 
 // New builds the Server. static is the filesystem rooted at the React build
 // output (containing index.html). It may be nil during early development.
 func New(paths config.Paths, static fs.FS) *Server {
-	return &Server{paths: paths, static: static}
+	// History lives alongside the rest of the data; failure here is non-fatal
+	// (the dashboard still works without persistence).
+	hist, err := history.New(filepath.Join(paths.Dir, "history"))
+	if err != nil {
+		hist = nil
+	}
+	return &Server{paths: paths, static: static, hist: hist}
 }
 
 // Handler returns the root http.Handler with all routes registered.
@@ -115,12 +131,101 @@ func (s *Server) handleRSS(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("missing url param"))
 		return
 	}
-	items, err := feeds.FetchRSS(url)
+	// No history store: behave like a plain live fetch.
+	if s.hist == nil {
+		items, err := feeds.FetchRSS(url)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, items)
+		return
+	}
+
+	live, err := feeds.FetchRSS(url)
 	if err != nil {
+		// Upstream failed — still serve whatever history we have so the user
+		// keeps seeing accumulated items.
+		stored := s.hist.Get(url, rssHistoryMax)
+		if len(stored) > 0 {
+			writeJSON(w, fromHistory(stored))
+			return
+		}
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, items)
+	merged, _ := s.hist.Merge(url, toHistory(live), rssHistoryMax, rssHistoryAge)
+	writeJSON(w, fromHistory(merged))
+}
+
+// toHistory / fromHistory convert between the feed item shape and the stored
+// history item shape.
+func toHistory(items []feeds.RSSItem) []history.Item {
+	out := make([]history.Item, len(items))
+	for i, it := range items {
+		out[i] = history.Item{GUID: it.GUID, Title: it.Title, Link: it.Link, Source: it.Source, Published: it.Published}
+	}
+	return out
+}
+
+func fromHistory(items []history.Item) []feeds.RSSItem {
+	out := make([]feeds.RSSItem, len(items))
+	for i, it := range items {
+		out[i] = feeds.RSSItem{GUID: it.GUID, Title: it.Title, Link: it.Link, Source: it.Source, Published: it.Published}
+	}
+	return out
+}
+
+// StartPoller periodically fetches every RSS feed referenced in the saved config
+// and merges new items into history — so the dashboard keeps catching news even
+// while no browser is open. Safe to call once at startup; runs in the background.
+func (s *Server) StartPoller() {
+	if s.hist == nil {
+		return
+	}
+	go func() {
+		s.pollFeeds() // prime immediately on startup
+		t := time.NewTicker(pollInterval)
+		defer t.Stop()
+		for range t.C {
+			s.pollFeeds()
+		}
+	}()
+}
+
+// pollFeeds reads the saved dashboard config, collects the unique RSS feed URLs
+// across all RSS widgets, fetches each, and merges into history.
+func (s *Server) pollFeeds() {
+	data, err := s.paths.LoadConfig()
+	if err != nil || data == nil {
+		return
+	}
+	var cfg struct {
+		Widgets []struct {
+			Type     string `json:"type"`
+			Settings struct {
+				Feeds []string `json:"feeds"`
+			} `json:"settings"`
+		} `json:"widgets"`
+	}
+	if json.Unmarshal(data, &cfg) != nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, wgt := range cfg.Widgets {
+		if wgt.Type != "rss" {
+			continue
+		}
+		for _, u := range wgt.Settings.Feeds {
+			if u == "" || seen[u] {
+				continue
+			}
+			seen[u] = true
+			if items, err := feeds.FetchRSS(u); err == nil {
+				s.hist.Merge(u, toHistory(items), rssHistoryMax, rssHistoryAge)
+			}
+		}
+	}
 }
 
 func (s *Server) handleHN(w http.ResponseWriter, r *http.Request) {

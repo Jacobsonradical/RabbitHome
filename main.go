@@ -48,6 +48,7 @@ func main() {
 	}
 
 	srv := server.New(paths, static)
+	srv.StartPoller() // accumulate RSS history in the background
 	httpSrv := &http.Server{
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,

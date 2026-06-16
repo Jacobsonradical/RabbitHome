@@ -88,10 +88,14 @@ export default function RSSWidget({ widget, onChange }) {
   const read = new Set(st.read)
   const visible = (data || []).filter((it) => !ignored.has(it.guid)).slice(0, s.length || 50)
   const categories = categorize(visible, s.filters)
+  // Unread = everything in history not yet read/ignored (so a busy few days
+  // shows up as a count, not lost items).
+  const unreadCount = (data || []).filter((it) => !ignored.has(it.guid) && !read.has(it.guid)).length
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="rss-bar">
+        {unreadCount > 0 && <span className="unread-badge">{unreadCount} unread</span>}
         <button className="head-btn" onClick={() => setShowSettings(true)} title="Feed settings">⚙</button>
       </div>
       {error && <div className="err-note">Some feeds failed: {error}</div>}
