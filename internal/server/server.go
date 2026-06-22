@@ -200,11 +200,13 @@ func (s *Server) pollFeeds() {
 	if err != nil || data == nil {
 		return
 	}
+	// Feeds may be plain URL strings (old configs) or {url, name} objects (new),
+	// so decode each entry as raw JSON and accept either form.
 	var cfg struct {
 		Widgets []struct {
 			Type     string `json:"type"`
 			Settings struct {
-				Feeds []string `json:"feeds"`
+				Feeds []json.RawMessage `json:"feeds"`
 			} `json:"settings"`
 		} `json:"widgets"`
 	}
@@ -216,7 +218,8 @@ func (s *Server) pollFeeds() {
 		if wgt.Type != "rss" {
 			continue
 		}
-		for _, u := range wgt.Settings.Feeds {
+		for _, raw := range wgt.Settings.Feeds {
+			u := feedURL(raw)
 			if u == "" || seen[u] {
 				continue
 			}
@@ -226,6 +229,22 @@ func (s *Server) pollFeeds() {
 			}
 		}
 	}
+}
+
+// feedURL extracts a feed URL from a config entry that is either a plain string
+// ("https://…") or an object ({"url":"https://…","name":"…"}).
+func feedURL(raw json.RawMessage) string {
+	var u string
+	if json.Unmarshal(raw, &u) == nil {
+		return u
+	}
+	var obj struct {
+		URL string `json:"url"`
+	}
+	if json.Unmarshal(raw, &obj) == nil {
+		return obj.URL
+	}
+	return ""
 }
 
 func (s *Server) handleHN(w http.ResponseWriter, r *http.Request) {

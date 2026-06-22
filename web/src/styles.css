@@ -147,6 +147,8 @@ body {
 .feed-item a { color: var(--fg); text-decoration: none; font-size: calc(15px * var(--font-scale)); line-height: 1.4; font-weight: 600; }
 .feed-item a:hover { color: var(--accent); }
 .feed-item.read a { color: var(--fg-dim); font-weight: 400; opacity: 0.55; }
+/* Saved items render "flat": calm + un-highlighted (no shine, not dimmed). */
+.feed-item.flat a { color: var(--fg); font-weight: 400; }
 .feed-item .meta { font-size: calc(12px * var(--font-scale)); color: var(--fg-dim); margin-top: 3px; }
 .feed-item.read .meta { opacity: 0.6; }
 .feed-actions { display: flex; gap: 2px; align-items: center; }
@@ -161,13 +163,32 @@ body {
 @media (prefers-reduced-motion: reduce) { .feed-item { animation: none; } }
 .feed-rank { color: var(--accent); font-variant-numeric: tabular-nums; font-size: calc(13px * var(--font-scale)); min-width: 20px; font-weight: 600; }
 
-/* RSS tabs (Feed / Saved) */
-.rss-tabs { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-.rss-tab { display: inline-flex; align-items: center; gap: 6px; background: var(--fill); border: none; border-radius: 980px; padding: 5px 13px; font-size: 12.5px; font-weight: 600; color: var(--fg); cursor: pointer; transition: background 0.15s ease; }
+/* RSS tabs: one per site + Saved. The tab strip scrolls horizontally when there
+ * are more sites than fit; the ⚙ button stays pinned at the right. */
+.rss-tabbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.rss-tabs { display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; scrollbar-width: thin; padding-bottom: 2px; }
+.rss-tabs::-webkit-scrollbar { height: 4px; }
+.rss-tabs::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 4px; }
+.rss-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; max-width: 160px; background: var(--fill); border: none; border-radius: 980px; padding: 5px 13px; font-size: 12.5px; font-weight: 600; color: var(--fg); cursor: pointer; transition: background 0.15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rss-tab:hover { background: var(--fill-strong); }
 .rss-tab.active { background: var(--blue); color: #fff; }
 .rss-tab .tab-badge { background: var(--blue); color: #fff; border-radius: 999px; padding: 0 7px; font-size: 10px; font-weight: 700; }
 .rss-tab.active .tab-badge { background: rgba(255,255,255,0.3); }
+
+/* Site sub-tabs inside the Saved tab (smaller, secondary). */
+.rss-subtabs { display: flex; align-items: center; gap: 5px; overflow-x: auto; margin-bottom: 8px; scrollbar-width: thin; }
+.rss-subtab { flex: 0 0 auto; background: none; border: none; border-radius: 980px; padding: 3px 10px; font-size: 11.5px; font-weight: 600; color: var(--fg-dim); cursor: pointer; white-space: nowrap; }
+.rss-subtab:hover { background: var(--fill); color: var(--fg); }
+.rss-subtab.active { background: var(--fill-strong); color: var(--fg); }
+
+/* Feed/filter editor rows in RSS settings */
+.feed-edit-list { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+.feed-edit-row, .filter-edit-row { display: flex; align-items: center; gap: 6px; }
+.feed-name-input { flex: 0 0 38%; }
+.filter-words-input { flex: 1; }
+.feed-edit-row .feed-url { flex: 1; font-size: 11.5px; color: var(--fg-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-x { flex: 0 0 auto; background: none; border: none; color: var(--fg-dim); cursor: pointer; font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 6px; }
+.chip-x:hover { color: var(--accent); background: rgba(128,128,128,0.18); }
 
 /* category headers inside RSS (collapsible) */
 .feed-cat { display: flex; align-items: center; gap: 7px; font-size: calc(14.5px * var(--font-scale)); font-weight: 700; letter-spacing: 0.2px; color: var(--accent-2); margin: 12px 0 4px; }

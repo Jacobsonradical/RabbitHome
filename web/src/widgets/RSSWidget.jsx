@@ -4,13 +4,20 @@ import { api } from '../lib/api'
 import { toast } from '../lib/notify'
 
 // RSSWidget features:
-//  - filter words -> categorize feeds into matching categories + "Other"
+//  - one tab per site (feed), with an editable tab/site name
+//  - filter "groups": each group has a title + a set of words; an item matches
+//    the group if its title contains ANY of the words. The group's title is the
+//    section header (so several words can live under one custom title).
 //  - configurable length; the body scrolls within the fixed widget height
 //  - per-item "Ignore" removes it permanently (stored in state.ignored)
+//  - per-item "Save" moves it into the Saved tab (a "transform" of a live item
+//    into a saved one — same site + filter sections, just persisted)
 //  - notifications (toast + native) for newly-arrived items
 //  - read items dim and stop "shining" (stored in state.read)
+//  - Saved items render flat (not highlighted) and are themselves tabbed by site
+//    and grouped into the same filter sections.
 //
-// Feeds are added/removed via buttons in the settings panel (no config file).
+// Feeds/filters are added/removed via buttons in the settings panel.
 
 const timeAgo = (iso) => {
   if (!iso) return ''
@@ -20,12 +27,31 @@ const timeAgo = (iso) => {
   return `${Math.round(diff / 86400)}d`
 }
 
+const shortUrl = (u) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }
+const splitWords = (v) => v.split(',').map((w) => w.trim()).filter(Boolean)
+
+// --- Backward-compatible normalizers -------------------------------------
+// Older configs stored feeds as plain URL strings and filters as plain words.
+// Normalize both to the richer shape the UI now uses so old saved configs keep
+// working; the next save rewrites them in the new form.
+const normFeed = (f) =>
+  typeof f === 'string' ? { url: f, name: '' } : { url: f.url, name: f.name || '' }
+const normFilter = (f) =>
+  typeof f === 'string' ? { title: f, words: [f] } : { title: f.title || '', words: f.words || [] }
+
 export default function RSSWidget({ widget, onChange }) {
   const s = widget.settings
   const st = widget.state || { read: [], ignored: [], seen: [] }
-  const [showSettings, setShowSettings] = useState(s.feeds.length === 0)
-  const [collapsed, setCollapsed] = useState(() => new Set()) // collapsed category names
-  const [tab, setTab] = useState('feed') // 'feed' | 'saved'
+  const feeds = (s.feeds || []).map(normFeed)
+  const filters = (s.filters || []).map(normFilter)
+
+  const [showSettings, setShowSettings] = useState(feeds.length === 0)
+  const [collapsed, setCollapsed] = useState(() => new Set()) // collapsed section names
+  // Active top tab: a feed url, or 'saved'. Default to the first site.
+  const [tab, setTab] = useState(() => feeds[0]?.url || 'saved')
+  // Active site sub-tab within Saved: 'all' or a saved site key.
+  const [savedSite, setSavedSite] = useState('all')
+
   const toggleCat = (name) =>
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -33,41 +59,24 @@ export default function RSSWidget({ widget, onChange }) {
       return next
     })
 
-  // Fetch every configured feed in parallel and merge, newest first.
+  // Fetch every configured feed in parallel; tag each item with its feed url so
+  // we can group items back into per-site tabs (source titles can collide/be
+  // empty, the url is the stable key).
   const { data, error, loading } = usePoll(
     async () => {
       const lists = await Promise.all(
-        s.feeds.map((u) => api.rss(u).catch(() => [])), // one bad feed won't kill the rest
+        feeds.map(async (f) => {
+          const items = await api.rss(f.url).catch(() => []) // one bad feed won't kill the rest
+          return items.map((it) => ({ ...it, feedUrl: f.url }))
+        }),
       )
       const merged = lists.flat()
       merged.sort((a, b) => (b.published || '').localeCompare(a.published || ''))
       return merged
     },
     5 * 60 * 1000, // refresh every 5 min
-    [s.feeds.join('|')],
+    [feeds.map((f) => f.url).join('|')],
   )
-
-  // Notify on newly-seen items (5.4). Skip the very first population.
-  const firstLoad = useRef(true)
-  useEffect(() => {
-    if (!data) return
-    const seen = new Set(st.seen)
-    const fresh = data.filter((it) => it.guid && !seen.has(it.guid))
-    if (firstLoad.current) {
-      firstLoad.current = false
-    } else if (fresh.length > 0) {
-      toast({
-        title: `📰 ${fresh.length} new in ${widget.title}`,
-        body: fresh[0].title,
-      })
-    }
-    if (fresh.length > 0) {
-      // Remember up to the latest 500 guids so "new" detection stays bounded.
-      const nextSeen = [...data.map((it) => it.guid), ...st.seen].filter(Boolean)
-      patch({ state: { ...st, seen: Array.from(new Set(nextSeen)).slice(0, 500) } })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data])
 
   const patch = (p) => onChange({ ...widget, ...p })
   const setSettings = (p) => patch({ settings: { ...s, ...p } })
@@ -78,162 +87,264 @@ export default function RSSWidget({ widget, onChange }) {
   const ignore = (guid) =>
     patch({ state: { ...st, ignored: [...st.ignored, guid].slice(-1000) } })
 
-  // Saved items are kept in full (not just a guid) so they persist permanently,
-  // even after the original drops out of the feed/history. Saving removes the
-  // item from the feed, freeing its slot for the next unread item.
+  // Saved items keep the full payload (incl. feedUrl + source) so the Saved tab
+  // can re-group them by site and filter exactly like the live feed.
   const saved = st.saved || []
   const save = (item) => {
     if (saved.some((x) => x.guid === item.guid)) return
     patch({ state: { ...st, saved: [
-      { guid: item.guid, title: item.title, link: item.link, source: item.source, published: item.published },
+      { guid: item.guid, title: item.title, link: item.link, source: item.source, feedUrl: item.feedUrl, published: item.published },
       ...saved,
     ] } })
   }
   const unsave = (guid) =>
     patch({ state: { ...st, saved: saved.filter((x) => x.guid !== guid) } })
 
+  // Notify on newly-seen items (5.4). Skip the very first population.
+  const firstLoad = useRef(true)
+  useEffect(() => {
+    if (!data) return
+    const seen = new Set(st.seen)
+    const fresh = data.filter((it) => it.guid && !seen.has(it.guid))
+    if (firstLoad.current) {
+      firstLoad.current = false
+    } else if (fresh.length > 0) {
+      toast({ title: `📰 ${fresh.length} new in ${widget.title}`, body: fresh[0].title })
+    }
+    if (fresh.length > 0) {
+      const nextSeen = [...data.map((it) => it.guid), ...st.seen].filter(Boolean)
+      patch({ state: { ...st, seen: Array.from(new Set(nextSeen)).slice(0, 500) } })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
+
   if (showSettings) {
-    return <RSSSettings widget={widget} setSettings={setSettings} done={() => setShowSettings(false)} />
+    return <RSSSettings widget={widget} feeds={feeds} filters={filters} setSettings={setSettings} done={() => setShowSettings(false)} />
   }
   if (loading && !data) return <div className="center-note">Loading feeds…</div>
-  if (s.feeds.length === 0) return <div className="center-note">No feeds yet. Click ⚙ to add one.</div>
+  if (feeds.length === 0) return <div className="center-note">No feeds yet. Click ⚙ to add one.</div>
 
-  // Apply ignore + saved + length, then categorize by filter words.
+  // Read / ignored / saved sets used for filtering + badges.
   const ignored = new Set(st.ignored)
   const read = new Set(st.read)
   const savedSet = new Set(saved.map((x) => x.guid))
   const inFeed = (it) => !ignored.has(it.guid) && !savedSet.has(it.guid)
-  const visible = (data || []).filter(inFeed).slice(0, s.length || 50)
-  const categories = categorize(visible, s.filters)
-  // Unread = everything in history not yet read/ignored/saved (so a busy few
-  // days shows up as a count, not lost items).
-  const unreadCount = (data || []).filter((it) => inFeed(it) && !read.has(it.guid)).length
+
+  // Resolve the active top tab (fall back if its feed was removed).
+  let current = tab
+  if (current !== 'saved' && !feeds.some((f) => f.url === current)) current = feeds[0]?.url || 'saved'
+
+  // Display name for a site tab: explicit name, else the feed's own title from
+  // the fetched items, else the hostname.
+  const feedName = (f) => {
+    if (f.name) return f.name
+    const item = (data || []).find((it) => it.feedUrl === f.url && it.source)
+    return item?.source || shortUrl(f.url)
+  }
+
+  // --- Saved-tab grouping helpers ---
+  const savedKey = (x) => x.feedUrl || x.source || 'unknown'
+  const savedSiteKeys = []
+  const seenKeys = new Set()
+  for (const x of saved) {
+    const k = savedKey(x)
+    if (!seenKeys.has(k)) { seenKeys.add(k); savedSiteKeys.push(k) }
+  }
+  const savedSiteName = (k) => {
+    const f = feeds.find((ff) => ff.url === k)
+    if (f) return feedName(f)
+    const item = saved.find((x) => savedKey(x) === k)
+    return item?.source || shortUrl(k)
+  }
+  let curSavedSite = savedSite
+  if (curSavedSite !== 'all' && !savedSiteKeys.includes(curSavedSite)) curSavedSite = 'all'
+
+  // Live item row: shines when unread, dims when read; Save + Ignore actions.
+  const liveRow = (it) => (
+    <li key={it.guid} className={'feed-item' + (read.has(it.guid) ? ' read' : '')}>
+      <div style={{ flex: 1 }}>
+        <a href={it.link} target="_blank" rel="noreferrer" onClick={() => markRead(it.guid)}>{it.title}</a>
+        <div className="meta">{it.source} · {timeAgo(it.published)}</div>
+      </div>
+      <div className="feed-actions">
+        <button className="act" title="Save for later" onClick={() => save(it)}>🔖</button>
+        <button className="act" title="Ignore" onClick={() => ignore(it.guid)}>✕</button>
+      </div>
+    </li>
+  )
+
+  // Saved item row: flat (never highlighted) with an Unsave action.
+  const savedRow = (it) => (
+    <li key={it.guid} className="feed-item flat">
+      <div style={{ flex: 1 }}>
+        <a href={it.link} target="_blank" rel="noreferrer" onClick={() => markRead(it.guid)}>{it.title}</a>
+        <div className="meta">{it.source} · {timeAgo(it.published)}</div>
+      </div>
+      <div className="feed-actions">
+        <button className="act" title="Remove from saved" onClick={() => unsave(it.guid)}>✕</button>
+      </div>
+    </li>
+  )
 
   return (
     <div>
-      <div className="rss-tabs">
-        <button className={'rss-tab' + (tab === 'feed' ? ' active' : '')} onClick={() => setTab('feed')}>
-          Feed{unreadCount > 0 && <span className="tab-badge">{unreadCount}</span>}
-        </button>
-        <button className={'rss-tab' + (tab === 'saved' ? ' active' : '')} onClick={() => setTab('saved')}>
-          Saved{saved.length > 0 && <span className="tab-badge">{saved.length}</span>}
-        </button>
-        <button className="head-btn" style={{ marginLeft: 'auto' }} onClick={() => setShowSettings(true)} title="Feed settings">⚙</button>
+      <div className="rss-tabbar">
+        <div className="rss-tabs">
+          {feeds.map((f) => {
+            const unread = (data || []).filter((it) => it.feedUrl === f.url && inFeed(it) && !read.has(it.guid)).length
+            return (
+              <button
+                key={f.url}
+                className={'rss-tab' + (current === f.url ? ' active' : '')}
+                onClick={() => setTab(f.url)}
+                title={f.url}
+              >
+                {feedName(f)}{unread > 0 && <span className="tab-badge">{unread}</span>}
+              </button>
+            )
+          })}
+          <button className={'rss-tab' + (current === 'saved' ? ' active' : '')} onClick={() => setTab('saved')}>
+            🔖 Saved{saved.length > 0 && <span className="tab-badge">{saved.length}</span>}
+          </button>
+        </div>
+        <button className="head-btn" onClick={() => setShowSettings(true)} title="Feed settings">⚙</button>
       </div>
 
-      {tab === 'saved' ? (
-        <SavedList
-          items={[...saved].sort((a, b) => (b.published || '').localeCompare(a.published || ''))}
-          onOpen={markRead}
-          onUnsave={unsave}
-        />
+      {current === 'saved' ? (
+        saved.length === 0 ? (
+          <div className="center-note">No saved items yet. Click 🔖 on a feed item to keep it here.</div>
+        ) : (
+          <>
+            {/* Site sub-tabs within Saved */}
+            <div className="rss-subtabs">
+              <button className={'rss-subtab' + (curSavedSite === 'all' ? ' active' : '')} onClick={() => setSavedSite('all')}>All</button>
+              {savedSiteKeys.map((k) => (
+                <button key={k} className={'rss-subtab' + (curSavedSite === k ? ' active' : '')} onClick={() => setSavedSite(k)}>
+                  {savedSiteName(k)}
+                </button>
+              ))}
+            </div>
+            <CategoryList
+              categories={categorize(
+                (curSavedSite === 'all' ? saved : saved.filter((x) => savedKey(x) === curSavedSite))
+                  .slice()
+                  .sort((a, b) => (b.published || '').localeCompare(a.published || '')),
+                filters,
+              )}
+              collapsed={collapsed}
+              toggleCat={toggleCat}
+              renderRow={savedRow}
+            />
+          </>
+        )
       ) : (
         <>
           {error && <div className="err-note">Some feeds failed: {error}</div>}
-          {categories.map(({ name, items }) => {
-            const hasHeader = categories.length > 1
-            const isCollapsed = hasHeader && collapsed.has(name)
-            return (
-              <div key={name}>
-                {hasHeader && (
-                  <div className="feed-cat clickable" onClick={() => toggleCat(name)}>
-                    <span className="cat-arrow">{isCollapsed ? '▶' : '▼'}</span>
-                    {name}
-                    <span className="cat-count">{items.length}</span>
-                  </div>
-                )}
-                {!isCollapsed && (
-                  <ul className="feed-list">
-                    {items.map((it) => (
-                      <li key={it.guid} className={'feed-item' + (read.has(it.guid) ? ' read' : '')}>
-                        <div style={{ flex: 1 }}>
-                          <a href={it.link} target="_blank" rel="noreferrer" onClick={() => markRead(it.guid)}>
-                            {it.title}
-                          </a>
-                          <div className="meta">{it.source} · {timeAgo(it.published)}</div>
-                        </div>
-                        <div className="feed-actions">
-                          <button className="act" title="Save for later" onClick={() => save(it)}>🔖</button>
-                          <button className="act" title="Ignore" onClick={() => ignore(it.guid)}>✕</button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )
-          })}
+          <CategoryList
+            categories={categorize(
+              (data || []).filter((it) => it.feedUrl === current && inFeed(it)).slice(0, s.length || 50),
+              filters,
+            )}
+            collapsed={collapsed}
+            toggleCat={toggleCat}
+            renderRow={liveRow}
+          />
         </>
       )}
     </div>
   )
 }
 
-// SavedList renders the permanently-saved items (no length limit, newest first).
-function SavedList({ items, onOpen, onUnsave }) {
-  if (items.length === 0) {
-    return <div className="center-note">No saved items yet. Click 🔖 on a feed item to keep it here.</div>
-  }
-  return (
-    <ul className="feed-list">
-      {items.map((it) => (
-        <li key={it.guid} className="feed-item">
-          <div style={{ flex: 1 }}>
-            <a href={it.link} target="_blank" rel="noreferrer" onClick={() => onOpen(it.guid)}>{it.title}</a>
-            <div className="meta">{it.source} · {timeAgo(it.published)}</div>
+// CategoryList renders filter sections with collapsible headers. With a single
+// "All" category (no filters) it renders a bare list (no header).
+function CategoryList({ categories, collapsed, toggleCat, renderRow }) {
+  if (categories.length === 0) return <div className="center-note">Nothing here.</div>
+  return categories.map(({ name, items }) => {
+    const hasHeader = categories.length > 1
+    const isCollapsed = hasHeader && collapsed.has(name)
+    return (
+      <div key={name}>
+        {hasHeader && (
+          <div className="feed-cat clickable" onClick={() => toggleCat(name)}>
+            <span className="cat-arrow">{isCollapsed ? '▶' : '▼'}</span>
+            {name}
+            <span className="cat-count">{items.length}</span>
           </div>
-          <div className="feed-actions">
-            <button className="act" title="Remove from saved" onClick={() => onUnsave(it.guid)}>✕</button>
-          </div>
-        </li>
-      ))}
-    </ul>
-  )
+        )}
+        {!isCollapsed && <ul className="feed-list">{items.map(renderRow)}</ul>}
+      </div>
+    )
+  })
 }
 
-// categorize buckets items by filter word (case-insensitive title match). An
-// item matching no filter falls into "Other". With no filters, one "All" bucket.
+// categorize buckets items into filter groups. An item joins a group if its
+// title contains ANY of the group's words (case-insensitive). Items matching no
+// group fall into "Other". With no filters, one "All" bucket (no header).
 function categorize(items, filters) {
   if (!filters || filters.length === 0) return [{ name: 'All', items }]
-  const buckets = filters.map((f) => ({ name: f, items: [], test: f.toLowerCase() }))
+  const buckets = filters.map((f) => ({
+    name: f.title || (f.words[0] || 'Filter'),
+    items: [],
+    tests: (f.words || []).map((w) => w.toLowerCase()).filter(Boolean),
+  }))
   const other = { name: 'Other', items: [] }
   for (const it of items) {
     const title = (it.title || '').toLowerCase()
     let matched = false
     for (const b of buckets) {
-      if (title.includes(b.test)) { b.items.push(it); matched = true }
+      if (b.tests.some((t) => title.includes(t))) { b.items.push(it); matched = true }
     }
     if (!matched) other.items.push(it)
   }
   return [...buckets, other].filter((b) => b.items.length > 0).map(({ name, items }) => ({ name, items }))
 }
 
-// RSSSettings: add/remove feeds + filters via buttons, set length.
-function RSSSettings({ widget, setSettings, done }) {
+// RSSSettings: add/remove feeds (with editable names) + filter groups, set length.
+function RSSSettings({ widget, feeds, filters, setSettings, done }) {
   const s = widget.settings
   const [feed, setFeed] = useState('')
-  const [filter, setFilter] = useState('')
+  const [ftitle, setFtitle] = useState('')
+  const [fwords, setFwords] = useState('')
+
+  const writeFeeds = (next) => setSettings({ feeds: next })
+  const writeFilters = (next) => setSettings({ filters: next })
 
   const addFeed = () => {
     const u = feed.trim()
-    if (u && !s.feeds.includes(u)) setSettings({ feeds: [...s.feeds, u] })
+    if (u && !feeds.some((f) => f.url === u)) writeFeeds([...feeds, { url: u, name: '' }])
     setFeed('')
   }
+  const renameFeed = (i, name) => writeFeeds(feeds.map((f, j) => (j === i ? { ...f, name } : f)))
+  const removeFeed = (i) => writeFeeds(feeds.filter((_, j) => j !== i))
+
   const addFilter = () => {
-    const f = filter.trim()
-    if (f && !s.filters.includes(f)) setSettings({ filters: [...s.filters, f] })
-    setFilter('')
+    const title = ftitle.trim()
+    const words = splitWords(fwords)
+    const finalWords = words.length ? words : (title ? [title] : [])
+    if (title && finalWords.length) writeFilters([...filters, { title, words: finalWords }])
+    setFtitle(''); setFwords('')
   }
+  const updateFilter = (i, patch) => writeFilters(filters.map((f, j) => (j === i ? { ...f, ...patch } : f)))
+  const removeFilter = (i) => writeFilters(filters.filter((_, j) => j !== i))
 
   return (
     <div>
       <div className="section">
-        <label>Feeds (RSS/Atom URLs)</label>
-        <div className="chips">
-          {s.feeds.map((u) => (
-            <span className="chip" key={u}>{shortUrl(u)}<button onClick={() => setSettings({ feeds: s.feeds.filter((x) => x !== u) })}>✕</button></span>
+        <label>Feeds & tab names</label>
+        <div className="feed-edit-list">
+          {feeds.map((f, i) => (
+            <div className="feed-edit-row" key={f.url}>
+              <input
+                className="feed-name-input"
+                value={f.name}
+                placeholder={shortUrl(f.url)}
+                onChange={(e) => renameFeed(i, e.target.value)}
+              />
+              <span className="feed-url" title={f.url}>{shortUrl(f.url)}</span>
+              <button className="chip-x" title="Remove feed" onClick={() => removeFeed(i)}>✕</button>
+            </div>
           ))}
-          {s.feeds.length === 0 && <span className="muted-note">none yet</span>}
+          {feeds.length === 0 && <span className="muted-note">none yet</span>}
         </div>
         <div className="inline-add">
           <input value={feed} onChange={(e) => setFeed(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addFeed()} placeholder="https://example.com/feed.xml" />
@@ -242,21 +353,36 @@ function RSSSettings({ widget, setSettings, done }) {
       </div>
 
       <div className="section">
-        <label>Filter words (categorize by title)</label>
-        <div className="chips">
-          {s.filters.map((f) => (
-            <span className="chip" key={f}>{f}<button onClick={() => setSettings({ filters: s.filters.filter((x) => x !== f) })}>✕</button></span>
+        <label>Filter groups (a title + words; matches any word)</label>
+        <div className="feed-edit-list">
+          {filters.map((f, i) => (
+            <div className="filter-edit-row" key={i}>
+              <input
+                className="feed-name-input"
+                value={f.title}
+                placeholder="Title"
+                onChange={(e) => updateFilter(i, { title: e.target.value })}
+              />
+              <input
+                className="filter-words-input"
+                value={f.words.join(', ')}
+                placeholder="words: AI, Elon Musk"
+                onChange={(e) => updateFilter(i, { words: splitWords(e.target.value) })}
+              />
+              <button className="chip-x" title="Remove group" onClick={() => removeFilter(i)}>✕</button>
+            </div>
           ))}
-          {s.filters.length === 0 && <span className="muted-note">none — feeds show as one list</span>}
+          {filters.length === 0 && <span className="muted-note">none — feeds show as one list</span>}
         </div>
         <div className="inline-add">
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addFilter()} placeholder="e.g. AI" />
+          <input value={ftitle} onChange={(e) => setFtitle(e.target.value)} placeholder="Title (e.g. AI)" style={{ flex: '0 0 35%' }} />
+          <input value={fwords} onChange={(e) => setFwords(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addFilter()} placeholder="words: AI, Elon Musk" />
           <button className="btn" onClick={addFilter}>Add</button>
         </div>
       </div>
 
       <div className="section">
-        <label>Max items: {s.length}</label>
+        <label>Max items per site: {s.length}</label>
         <input type="range" min="10" max="100" step="5" value={s.length} onChange={(e) => setSettings({ length: Number(e.target.value) })} style={{ width: '100%' }} />
       </div>
 
@@ -264,5 +390,3 @@ function RSSSettings({ widget, setSettings, done }) {
     </div>
   )
 }
-
-const shortUrl = (u) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }

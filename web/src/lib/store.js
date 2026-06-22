@@ -17,8 +17,14 @@ export const widgetDefaults = {
   rss: {
     title: 'RSS',
     settings: {
-      // Sensible starter feeds; add/remove via the widget's ⚙ button.
-      feeds: ['https://techcrunch.com/feed/', 'https://www.socialmediatoday.com/feeds/news/'],
+      // Sensible starter feeds; add/remove via the widget's ⚙ button. Each feed
+      // is { url, name }; an empty name falls back to the site's own title.
+      feeds: [
+        { url: 'https://techcrunch.com/feed/', name: '' },
+        { url: 'https://www.socialmediatoday.com/feeds/news/', name: '' },
+      ],
+      // Filter groups: each is { title, words[] }; an item joins a group if its
+      // title contains any of the words. Empty = feeds show as one list.
       filters: [],
       length: 50,
     },
