@@ -121,9 +121,12 @@ func Retrieve(ctx context.Context, sites []SiteCreds) []SiteResult {
 // Chrome (via the DevTools protocol), so a Chromium-family browser is required;
 // Firefox cannot be driven this way. Empty means none was found anywhere we look.
 func chromePath() string {
-	// An explicit override wins (used by the Docker image).
+	// An explicit override wins (used by the Docker image) — but only if it
+	// actually exists, so a stale CHROME_BIN can still fall back to discovery.
 	if p := os.Getenv("CHROME_BIN"); p != "" {
-		return p
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
 	}
 	// On PATH (Linux, and Windows when chrome.exe is on PATH).
 	for _, name := range []string{"google-chrome", "google-chrome-stable",
