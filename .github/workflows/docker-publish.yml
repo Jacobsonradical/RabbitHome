@@ -8,6 +8,11 @@ on:
     branches: [main]
     tags: ['v*']
 
+# A newer push supersedes an in-flight build for the same ref.
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
