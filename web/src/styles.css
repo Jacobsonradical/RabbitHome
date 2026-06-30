@@ -366,3 +366,71 @@ input[type="file"] { border: none; background: none; padding: 0; font-size: 12px
 .muted-note { color: var(--fg-dim); font-size: 12px; }
 .err-note { color: #f87171; font-size: 12px; }
 .center-note { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-dim); font-size: 13px; text-align: center; padding: 10px; }
+
+/* ---- ScholarOne widget ------------------------------------------------- */
+.s1 { display: flex; flex-direction: column; height: 100%; font-size: 13px; }
+.s1-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.s1-title { font-weight: 600; }
+.s1-label { font-weight: 600; margin-bottom: 6px; }
+
+/* Centered states (retrieving) */
+.s1-center { align-items: center; justify-content: center; text-align: center; gap: 10px; }
+.s1-retrieving { font-weight: 600; font-size: 15px; }
+.s1-sub { color: var(--fg-dim); font-size: 12px; max-width: 240px; }
+.s1-spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--fill-strong); border-top-color: var(--blue); animation: s1spin 0.8s linear infinite; }
+@keyframes s1spin { to { transform: rotate(360deg); } }
+
+/* Credential form */
+.s1-cred-block { margin-bottom: 10px; }
+.s1-cred-site { font-weight: 600; margin-bottom: 4px; }
+.s1-input { width: 100%; box-sizing: border-box; margin-bottom: 6px; padding: 8px 10px; border-radius: 10px; border: none; background: var(--fill); color: var(--fg); outline: none; }
+.s1-input:focus { box-shadow: 0 0 0 2px var(--blue); }
+.s1-sites-note { color: var(--fg-dim); font-size: 11px; }
+.s1-actions { display: flex; gap: 8px; margin-top: 6px; }
+.s1-privacy { margin-top: 12px; color: var(--fg-dim); font-size: 11px; line-height: 1.4; }
+.s1-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+/* Settings: site editor rows */
+.s1-site-edit { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.s1-url-input { flex: none; width: 100%; margin-top: 4px; font-size: 11px; color: var(--fg-dim); }
+
+/* Results */
+.s1-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.s1-section { background: var(--fill); border-radius: 12px; padding: 10px 12px; }
+.s1-journal { font-weight: 600; margin-bottom: 8px; }
+.s1-toggle { display: inline-flex; background: rgba(120,120,128,0.18); border-radius: 9px; padding: 2px; margin-bottom: 8px; }
+.s1-tab { border: none; background: none; color: var(--fg-dim); padding: 4px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+.s1-tab.active { background: var(--blue); color: #fff; }
+.s1-list { display: flex; flex-direction: column; gap: 8px; }
+.s1-empty { color: var(--fg-dim); font-size: 12px; padding: 4px 0; }
+
+/* Journal tabs (one per site) shown above the active journal's content. */
+.s1-jtabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.s1-jtab { border: none; background: var(--fill); color: var(--fg-dim); padding: 5px 12px; border-radius: 9px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.s1-jtab.active { background: var(--blue); color: #fff; }
+
+/* A block = one manuscript and all its revisions grouped by base ID. */
+.s1-block { padding: 8px 0; border-top: 1px solid rgba(128,128,128,0.18); }
+.s1-block:first-child { padding-top: 2px; border-top: none; }
+.s1-block-title { font-weight: 600; line-height: 1.3; }
+.s1-block-base { font-family: var(--mono, monospace); font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+.s1-vcount { font-family: inherit; }
+.s1-version { padding: 6px 0 0 10px; border-left: 2px solid rgba(128,128,128,0.22); margin: 6px 0 0 2px; }
+
+.s1-paper { padding: 6px 0; border-top: 1px solid rgba(128,128,128,0.18); }
+.s1-paper:first-child { border-top: none; }
+.s1-paper-title { font-weight: 600; line-height: 1.3; }
+.s1-paper-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.s1-id { font-family: var(--mono, monospace); font-size: 11px; color: var(--fg-dim); }
+.s1-badge { font-size: 11px; background: var(--fill-strong); padding: 2px 8px; border-radius: 20px; }
+.s1-editors { font-size: 11px; color: var(--fg-dim); margin-top: 4px; }
+.s1-dates { font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+
+.s1-review { padding: 6px 0; border-top: 1px solid rgba(128,128,128,0.18); display: flex; flex-direction: column; gap: 3px; }
+.s1-review:first-child { border-top: none; }
+.s1-col { display: flex; gap: 6px; font-size: 12px; }
+.s1-col-label { color: var(--fg-dim); flex: 0 0 86px; }
+.s1-col-val { flex: 1; }
+
+.s1-footer { margin-top: 8px; color: var(--fg-dim); font-size: 11px; text-align: right; }
+.s1-samecreds { margin-bottom: 10px; font-size: 12px; color: var(--fg-dim); }

@@ -18,9 +18,13 @@ COPY . .
 COPY --from=web /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -o /rabbithome ./
 
-# 3) Minimal runtime.
+# 3) Minimal runtime. Chromium is included because the ScholarOne widget drives
+# a headless browser to log in and read the journal dashboards; the rest of the
+# app works without it.
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates chromium nss freetype harfbuzz ttf-freefont
+# Let chromedp find the browser inside the container.
+ENV CHROME_BIN=/usr/bin/chromium-browser
 COPY --from=gobuild /rabbithome /usr/local/bin/rabbithome
 # Persist dashboard config + uploaded backgrounds here (mount a volume).
 ENV RABBITHOME_DATA=/data

@@ -23,6 +23,20 @@ export const api = {
   stockNews: (symbol) => getJSON(`/api/stocknews?symbol=${encodeURIComponent(symbol)}`),
   symbolSearch: (q) => getJSON(`/api/symbolsearch?q=${encodeURIComponent(q)}`),
 
+  // --- ScholarOne on-demand retrieval ---
+  // sites: [{ key, name, url, username, password }]. Credentials are sent once,
+  // used to fill the login form on the local server, and never stored.
+  scholarOne: async (sites) => {
+    const res = await fetch('/api/scholarone/retrieve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sites }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `retrieve failed (${res.status})`)
+    return data.results || []
+  },
+
   // --- dashboard config ---
   loadConfig: () => getJSON('/api/config'),
   saveConfig: async (cfg) => {

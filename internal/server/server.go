@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"github.com/rabbitlord/rabbithome/internal/config"
 	"github.com/rabbitlord/rabbithome/internal/feeds"
 	"github.com/rabbitlord/rabbithome/internal/history"
+	"github.com/rabbitlord/rabbithome/internal/scholarone"
 )
 
 // How long RSS history is kept and how many items per feed are retained.
@@ -62,6 +64,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/markets", s.handleMarkets)
 	mux.HandleFunc("/api/stocknews", s.handleStockNews)
 	mux.HandleFunc("/api/symbolsearch", s.handleSymbolSearch)
+
+	// --- ScholarOne on-demand retrieval (drives a headless browser) ---
+	mux.HandleFunc("/api/scholarone/retrieve", s.handleScholarOne)
 
 	// --- dashboard state ---
 	mux.HandleFunc("/api/config", s.handleConfig)
@@ -346,6 +351,41 @@ func (s *Server) handleSymbolSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, res)
+}
+
+// ---- ScholarOne ----------------------------------------------------------
+
+// handleScholarOne retrieves paper/review status for one or more ScholarOne
+// sites. Credentials arrive in the POST body, are passed straight to the
+// retriever (which uses them only to fill the in-memory login form), and are
+// never persisted or logged. The response carries only the scraped, non-secret
+// results so the widget can cache them client-side.
+func (s *Server) handleScholarOne(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	var req struct {
+		Sites []scholarone.SiteCreds `json:"sites"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if len(req.Sites) == 0 {
+		writeErr(w, http.StatusBadRequest, errors.New("no sites to retrieve"))
+		return
+	}
+	// One generous ceiling for the whole batch; each site also caps itself.
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancel()
+	results := scholarone.Retrieve(ctx, req.Sites)
+	writeJSON(w, map[string]any{"results": results})
 }
 
 // ---- config --------------------------------------------------------------

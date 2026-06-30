@@ -33,6 +33,23 @@ export const widgetDefaults = {
   hackernews: { title: 'Hacker News', settings: { limit: 30 }, state: { read: [] } },
   markets: { title: 'Markets', settings: { symbols: ['AAPL', 'BTC-USD', '^GSPC'] } },
   calendar: { title: 'Calendar', settings: {} },
+  scholarone: {
+    title: 'ScholarOne',
+    settings: {
+      // The journal sites to query. Each is { key, name, url, enabled }. All
+      // three start enabled; edit/rename/add via the widget's ⚙ button.
+      sites: [
+        { key: 'isr', name: 'Information Systems Research', url: 'https://mc.manuscriptcentral.com/isr', enabled: true },
+        { key: 'ms', name: 'Management Science', url: 'https://mc.manuscriptcentral.com/ms', enabled: true },
+        { key: 'misq', name: 'MIS Quarterly', url: 'https://mc.manuscriptcentral.com/misq', enabled: true },
+      ],
+      // When true, one username/password is used for every site (the common case).
+      sameCreds: true,
+    },
+    // Cached results from the last retrieval (no credentials). Persists until the
+    // next retrieve so the dashboard shows the latest status after a reload.
+    state: { results: [], retrievedAt: '' },
+  },
 }
 
 // Sensible default grid size (cols=12) for each new widget type.
@@ -43,6 +60,7 @@ export const widgetSize = {
   hackernews: { w: 4, h: 8 },
   markets: { w: 4, h: 9 },
   calendar: { w: 4, h: 6 },
+  scholarone: { w: 5, h: 9 },
 }
 
 // The starter dashboard shown on first run (no saved config yet).

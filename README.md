@@ -4,7 +4,7 @@ A personal, customizable home dashboard — inspired by
 [Glance](https://github.com/glanceapp/glance), but trimmed down and tailored to
 the widgets and interactions I actually want.
 
-**Widgets:** Clock · Weather · RSS · Hacker News · Markets · Calendar.
+**Widgets:** Clock · Weather · RSS · Hacker News · Markets · Calendar · ScholarOne.
 
 Everything is customized **in the UI** — no config files to edit. Add feeds and
 tickers with a button, drag widgets around, drop in background photos (the text
@@ -77,14 +77,16 @@ git clone https://github.com/Jacobsonradical/RabbitHome.git
 cd RabbitHome
 docker build -t rabbithome:latest .
 docker run -d --name rabbithome --restart unless-stopped \
-  -p 7171:7171 -v rabbithome-data:/data rabbithome:latest
+  -p 127.0.0.1:7171:7171 -v rabbithome-data:/data rabbithome:latest
 ```
 
 What the `docker run` flags mean:
 - `-d` — run in the background.
 - `--name rabbithome` — name it so it's easy to manage.
 - `--restart unless-stopped` — **auto-start on every reboot** (see below).
-- `-p 7171:7171` — expose it on your machine's port 7171.
+- `-p 127.0.0.1:7171:7171` — serve it on your machine's port 7171, reachable
+  from this machine only (not from other devices on your network). Drop the
+  `127.0.0.1:` prefix only if you deliberately want to open it to your LAN.
 - `-v rabbithome-data:/data` — save your dashboard + backgrounds in a volume so
   they survive restarts and updates.
 
@@ -122,7 +124,7 @@ cd ~/rabbithome && docker compose pull && docker compose up -d
 cd RabbitHome && git pull && docker build -t rabbithome:latest . \
   && docker rm -f rabbithome \
   && docker run -d --name rabbithome --restart unless-stopped \
-     -p 7171:7171 -v rabbithome-data:/data rabbithome:latest
+     -p 127.0.0.1:7171:7171 -v rabbithome-data:/data rabbithome:latest
 ```
 
 Your config and backgrounds live in the `rabbithome-data` volume, so they
@@ -197,6 +199,13 @@ Your settings are saved to `~/.config/rabbithome/` (override with the
   chart (hover for price + time), key stats, and company-specific news. Add a
   stock by searching its name (e.g. "Nvidia" → NVDA).
 - **Clock** — an analog dial set in a starfield, with the live digital time.
+- **ScholarOne** — check your paper (Author) and review (Reviewer) status across
+  ScholarOne journal sites (e.g. ISR, Management Science, MIS Quarterly) without
+  logging into each one by hand. Enter your login(s) — one set for all sites or
+  per-site — and RabbitHome drives a headless browser locally to read each
+  dashboard, then groups the results per journal with a Paper/Review toggle.
+  Credentials are used once and never stored. Needs Chrome/Chromium installed
+  (the Docker image bundles Chromium).
 
 ---
 

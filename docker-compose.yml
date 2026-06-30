@@ -8,7 +8,10 @@ services:
     image: ghcr.io/jacobsonradical/rabbithome:latest
     container_name: rabbithome
     ports:
-      - "7171:7171"
+      # Publish on loopback only, so the dashboard is reachable from this machine
+      # but not from other devices on the same network. To open it to your LAN
+      # on purpose, change this to "7171:7171".
+      - "127.0.0.1:7171:7171"
     volumes:
       - rabbithome-data:/data
     restart: unless-stopped
